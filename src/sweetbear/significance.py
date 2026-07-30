@@ -67,6 +67,24 @@ class SignificanceResult:
     intracluster_correlation: float
     design_effect: float
     effective_sample_size: float
+    wild_bootstrap_p: float
+    effective_clusters: float
+
+    #: Below this many effective clusters, no cluster-robust method is
+    #: trustworthy and results are reported as inconclusive rather than
+    #: significant. The CRVE literature puts plain CR1 at roughly 40 clusters;
+    #: the wild bootstrap extends usable inference down to about a dozen.
+    MIN_EFFECTIVE_CLUSTERS: float = 12.0
+
+    @property
+    def reliable(self) -> bool:
+        """Whether the sample can support cluster-robust inference at all.
+
+        False means the answer is "this data cannot tell you", which is a
+        different and more useful statement than a confident p-value computed
+        on four informative clusters.
+        """
+        return self.effective_clusters >= self.MIN_EFFECTIVE_CLUSTERS
 
     @property
     def inflation_factor(self) -> float:
@@ -81,18 +99,38 @@ class SignificanceResult:
 
     @property
     def significant(self) -> bool:
-        """Whether the clustered interval excludes zero at the stated level."""
+        """Whether the result survives every check, not just the friendliest one.
+
+        Requires all three: enough effective clusters to support inference, a
+        clustered interval excluding zero, and a wild bootstrap p-value under
+        the complement of the stated level. The bootstrap is the binding
+        constraint on skewed markets, where the interval alone is far too
+        permissive.
+        """
+        if not self.reliable:
+            return False
         lo, hi = self.confidence_interval
-        return lo > 0.0 or hi < 0.0
+        excludes_zero = lo > 0.0 or hi < 0.0
+        return excludes_zero and self.wild_bootstrap_p < 0.05
 
     def summary(self) -> str:
         lo, hi = self.confidence_interval
         blo, bhi = self.bootstrap_interval
-        verdict = "SIGNIFICANT" if self.significant else "NOT DISTINGUISHABLE FROM ZERO"
+        if not self.reliable:
+            verdict = (
+                f"INCONCLUSIVE -- only {self.effective_clusters:.1f} effective "
+                f"clusters, below the {self.MIN_EFFECTIVE_CLUSTERS:.0f} needed"
+            )
+        elif self.significant:
+            verdict = "SIGNIFICANT"
+        else:
+            verdict = "NOT DISTINGUISHABLE FROM ZERO"
         return "\n".join(
             [
                 f"mean              {self.mean:+.4%}",
                 f"observations      {self.n_observations:,} in {self.n_clusters:,} clusters",
+                f"effective clusters{self.effective_clusters:8.1f}",
+                f"wild bootstrap p  {self.wild_bootstrap_p:.4f}",
                 f"naive SE          {self.naive_standard_error:.4%}",
                 f"clustered SE      {self.clustered_standard_error:.4%}"
                 f"  ({self.inflation_factor:.2f}x wider)",
@@ -257,12 +295,115 @@ def cluster_bootstrap_ci(
     return (float(np.quantile(means, alpha)), float(np.quantile(means, 1.0 - alpha)))
 
 
+def effective_clusters(
+    values: Sequence[float] | NDArray[np.float64],
+    clusters: Sequence[Hashable],
+) -> float:
+    """How many clusters *actually* carry the inference, by influence share.
+
+    Cluster-robust methods lean on having many clusters that each contribute
+    comparably to the variance. Longshot betting breaks that: at decimal odds
+    10 roughly a tenth of clusters contain a win, and those few supply nearly
+    all the signal. Forty clusters can carry the information of four.
+
+    This is the inverse Herfindahl index (participation ratio) of each
+    cluster's share of the sandwich "meat". It equals ``G`` when every cluster
+    contributes equally and collapses toward 1 when a handful dominate.
+
+    No amount of bootstrapping repairs a sample whose effective cluster count
+    is single digits. The correct response is to decline to certify, which is
+    what :attr:`SignificanceResult.reliable` does.
+    """
+    v = np.asarray(values, dtype=np.float64)
+    codes = cluster_codes(clusters)
+    if v.size != codes.size:
+        raise ValueError("values and clusters must have equal length")
+    n_groups = int(codes.max()) + 1 if codes.size else 0
+    if n_groups < 1:
+        return 0.0
+
+    resid = v - v.mean()
+    totals = np.bincount(codes, weights=resid, minlength=n_groups)
+    squared = totals**2
+    denom = float(np.sum(squared))
+    if denom <= 0.0:
+        return float(n_groups)
+    shares = squared / denom
+    return float(1.0 / np.sum(shares**2))
+
+
+def wild_cluster_bootstrap_p(
+    values: Sequence[float] | NDArray[np.float64],
+    clusters: Sequence[Hashable],
+    n_resamples: int = 9_999,
+    seed: int = 0,
+) -> float:
+    """Wild cluster bootstrap-t p-value, imposing the null (Cameron-Gelbach-Miller).
+
+    The CR1 sandwich with ``t(G-1)`` critical values is reliable for roughly
+    symmetric returns, and badly overconfident without them. Longshot betting
+    is the pathological case: a bet at decimal odds 10 pays ``+9`` or ``-1``,
+    so cluster totals are violently skewed and the normal-theory critical value
+    is far too small. Measured on simulated null data, CR1 alone rejects at
+    35-42% against a nominal 5% at ten clusters and odds of 10.
+
+    This procedure fixes that. Under the null the mean is zero, so the
+    restricted residuals are the returns themselves; each bootstrap replicate
+    flips the sign of whole clusters (Rademacher weights) and recomputes a
+    studentized statistic. Comparing the observed t against that distribution
+    -- rather than against a t table -- restores calibration, because the
+    bootstrap distribution inherits the same skew as the data.
+
+    Returns a two-sided p-value.
+    """
+    v = np.asarray(values, dtype=np.float64)
+    codes = cluster_codes(clusters)
+    if v.size != codes.size:
+        raise ValueError("values and clusters must have equal length")
+
+    n = v.size
+    n_groups = int(codes.max()) + 1 if codes.size else 0
+    if n_groups < 2 or n < 2:
+        return 1.0
+
+    observed_var = _clustered_variance_of_mean(v, codes)
+    if observed_var <= 0.0:
+        # Every observation identical: no within-sample variation, so there is
+        # nothing to studentize against. This is degenerate rather than
+        # overwhelming evidence, and refusing to reject is the safe reading --
+        # a sample where nothing varies cannot establish that anything does.
+        return 1.0
+    t_observed = abs(float(v.mean()) / np.sqrt(observed_var))
+
+    sums = np.bincount(codes, weights=v, minlength=n_groups)
+    sizes = np.bincount(codes, minlength=n_groups).astype(np.float64)
+
+    rng = np.random.default_rng(seed)
+    weights = rng.choice(
+        np.array([-1.0, 1.0]), size=(n_resamples, n_groups)
+    )
+
+    means = (weights @ sums) / n
+    totals = weights * sums[None, :] - sizes[None, :] * means[:, None]
+    correction = n_groups / (n_groups - 1.0)
+    variances = correction * np.sum(totals**2, axis=1) / (n**2)
+
+    valid = variances > 0.0
+    if not np.any(valid):
+        return 1.0
+    t_boot = np.abs(means[valid] / np.sqrt(variances[valid]))
+
+    # +1 in numerator and denominator keeps the p-value strictly positive.
+    return float((1.0 + np.sum(t_boot >= t_observed)) / (1.0 + t_boot.size))
+
+
 def clustered_significance(
     values: Sequence[float] | NDArray[np.float64],
     clusters: Sequence[Hashable] | None = None,
     level: float = 0.95,
     n_resamples: int = 10_000,
     seed: int = 0,
+    bootstrap_resamples: int = 1_999,
 ) -> SignificanceResult:
     """Test whether a mean return differs from zero, honouring correlation.
 
@@ -307,7 +448,9 @@ def clustered_significance(
             intracluster_correlation=0.0,
             design_effect=float(n),
             effective_sample_size=1.0,
-            )
+            wild_bootstrap_p=1.0,
+            effective_clusters=1.0,
+        )
 
     var = _clustered_variance_of_mean(v, codes)
     clustered_se = float(np.sqrt(var))
@@ -335,6 +478,10 @@ def clustered_significance(
         intracluster_correlation=intracluster_correlation(v, clusters),
         design_effect=design_effect(v, clusters),
         effective_sample_size=effective_sample_size(v, clusters),
+        wild_bootstrap_p=wild_cluster_bootstrap_p(
+            v, clusters, n_resamples=bootstrap_resamples, seed=seed
+        ),
+        effective_clusters=effective_clusters(v, clusters),
     )
 
 

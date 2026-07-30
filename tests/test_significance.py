@@ -11,6 +11,8 @@ import pytest
 
 from sweetbear.backtest import Bet, flat_stake, run_backtest
 from sweetbear.significance import (
+    effective_clusters,
+    wild_cluster_bootstrap_p,
     cluster_bootstrap_ci,
     cluster_codes,
     clustered_significance,
@@ -297,3 +299,99 @@ def test_summary_reports_clustered_verdict():
     text = res.summary()
     assert "clustered t" in text
     assert "effective n" in text
+
+
+# --- skew, effective clusters, and the reliability gate --------------------
+
+
+def _shared_outcome_bets(n_groups: int, per_group: int, decimal_odds: float, seed: int):
+    """Clusters that each settle as one outcome, at arbitrary odds."""
+    rng = np.random.default_rng(seed)
+    p = 1.0 / decimal_odds  # zero true edge
+    values, labels = [], []
+    for g in range(n_groups):
+        outcome = rng.random() < p
+        values.append(
+            np.where(np.full(per_group, outcome), decimal_odds - 1.0, -1.0)
+        )
+        labels.append(np.full(per_group, g))
+    return np.concatenate(values), np.concatenate(labels)
+
+
+def test_effective_clusters_equals_g_when_contributions_are_equal():
+    values = np.tile([1.0, -1.0], 50)
+    clusters = np.repeat(np.arange(50), 2)
+    # Every cluster contributes an identical residual total.
+    assert effective_clusters(values, clusters) == pytest.approx(50.0, rel=0.01)
+
+
+def test_effective_clusters_collapses_when_one_cluster_dominates():
+    values = np.concatenate([np.full(20, 100.0), np.zeros(180)])
+    clusters = np.repeat(np.arange(10), 20)
+    assert effective_clusters(values, clusters) < 3.0
+
+
+def test_longshot_sample_is_flagged_unreliable():
+    """40 clusters at odds 10 carry the information of a handful."""
+    values, clusters = _shared_outcome_bets(40, 20, 10.0, seed=3)
+    res = clustered_significance(values, clusters, bootstrap_resamples=399)
+    assert res.effective_clusters < res.n_clusters / 3
+    assert not res.reliable
+    assert not res.significant  # gated regardless of what the interval says
+    assert "INCONCLUSIVE" in res.summary()
+
+
+def test_even_money_sample_with_many_clusters_is_reliable():
+    values, clusters = _shared_outcome_bets(120, 10, 2.0, seed=4)
+    res = clustered_significance(values, clusters, bootstrap_resamples=399)
+    assert res.reliable
+    assert res.effective_clusters > 12.0
+
+
+def test_wild_bootstrap_p_is_a_valid_probability():
+    values, clusters = _shared_outcome_bets(30, 10, 2.0, seed=5)
+    p = wild_cluster_bootstrap_p(values, clusters, n_resamples=399, seed=1)
+    assert 0.0 < p <= 1.0
+
+
+def test_wild_bootstrap_rejects_a_large_real_edge():
+    """A strong but realistic edge: 80% of clusters win at even money."""
+    rng = np.random.default_rng(21)
+    values, labels = [], []
+    for g in range(60):
+        won = rng.random() < 0.80
+        values.append(np.where(np.full(5, won), 1.0, -1.0))
+        labels.append(np.full(5, g))
+    p = wild_cluster_bootstrap_p(
+        np.concatenate(values), np.concatenate(labels), n_resamples=999, seed=2
+    )
+    assert p < 0.05
+
+
+def test_wild_bootstrap_declines_on_degenerate_zero_variance_data():
+    """Identical observations carry no information about sampling variability.
+
+    Refusing to reject is the correct reading here: a sample in which nothing
+    varies cannot demonstrate that anything does.
+    """
+    values = np.full(200, 1.0)
+    clusters = np.repeat(np.arange(40), 5)
+    assert wild_cluster_bootstrap_p(values, clusters, n_resamples=99, seed=2) == 1.0
+
+
+def test_wild_bootstrap_is_deterministic_under_seed():
+    values, clusters = _shared_outcome_bets(25, 8, 2.0, seed=6)
+    a = wild_cluster_bootstrap_p(values, clusters, n_resamples=399, seed=9)
+    b = wild_cluster_bootstrap_p(values, clusters, n_resamples=399, seed=9)
+    assert a == b
+
+
+def test_significance_requires_both_interval_and_bootstrap():
+    """A result that clears the interval but not the bootstrap is not promoted."""
+    values, clusters = _shared_outcome_bets(60, 10, 2.0, seed=7)
+    res = clustered_significance(values, clusters, bootstrap_resamples=399)
+    if res.significant:
+        lo, hi = res.confidence_interval
+        assert lo > 0.0 or hi < 0.0
+        assert res.wild_bootstrap_p < 0.05
+        assert res.reliable
