@@ -16,13 +16,14 @@ here explicitly:
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Hashable, Iterable, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .calibration import brier_score, expected_calibration_error, log_loss
 from .edge import closing_line_value, fractional_kelly
+from .significance import SignificanceResult, clustered_significance
 
 __all__ = [
     "Bet",
@@ -45,6 +46,10 @@ class Bet:
     ``decimal_odds`` is the price actually taken, vig included.
     ``closing_fair_probability`` is the de-vigged market probability at close,
     and is what makes CLV reporting possible.
+
+    ``correlation_group`` names the set of bets this one shares fate with -- a
+    game id, a slate, a weather system, a single injury report. Bets inside a
+    group are not independent observations, and inference has to know that.
     """
 
     timestamp: Any
@@ -54,6 +59,22 @@ class Bet:
     closing_fair_probability: float | None = None
     market_id: str | None = None
     label: str | None = None
+    correlation_group: Hashable | None = None
+
+    @property
+    def cluster_key(self) -> Hashable:
+        """Best available correlation label, falling back through the fields.
+
+        Explicit group wins; failing that, bets on the same market share fate;
+        failing that, each bet stands alone. The fallback is deliberately the
+        *optimistic* one, so an unlabelled sample reports the naive number
+        rather than silently inventing a correlation structure.
+        """
+        if self.correlation_group is not None:
+            return self.correlation_group
+        if self.market_id is not None:
+            return self.market_id
+        return ("__solo__", id(self))
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.probability <= 1.0:
@@ -85,6 +106,9 @@ class BacktestResult:
     ece: float
     went_broke: bool
     skipped: int = 0
+    cluster_labels: tuple[Hashable, ...] = ()
+    clv_values: NDArray[np.float64] | None = None
+    clv_cluster_labels: tuple[Hashable, ...] = ()
     _rng_seed: int = field(default=0, repr=False)
 
     @property
@@ -132,6 +156,38 @@ class BacktestResult:
             float(np.quantile(means, 1.0 - alpha)),
         )
 
+    def significance(
+        self, level: float = 0.95, n_resamples: int = 10_000, seed: int = 0
+    ) -> SignificanceResult:
+        """Cluster-robust verdict on the yield. This is the number to trust.
+
+        Where :attr:`t_statistic` assumes independence, this honours the
+        correlation groups carried on the bets. When the two disagree, the
+        naive one is wrong.
+        """
+        labels = self.cluster_labels or tuple(range(self.per_bet_returns.size))
+        return clustered_significance(
+            self.per_bet_returns, labels, level, n_resamples, seed
+        )
+
+    def clv_significance(
+        self, level: float = 0.95, n_resamples: int = 10_000, seed: int = 0
+    ) -> SignificanceResult | None:
+        """Cluster-robust verdict on closing line value.
+
+        CLV is the better promotion gate. Profit is edge plus a large amount of
+        settlement noise; CLV is edge measured against the sharpest available
+        estimate, with the noise stripped out. It converges in hundreds of bets
+        where profit needs thousands, which is exactly the gap that tempts
+        people into promoting on far too little data.
+        """
+        if self.clv_values is None or self.clv_values.size < 2:
+            return None
+        labels = self.clv_cluster_labels or tuple(range(self.clv_values.size))
+        return clustered_significance(
+            self.clv_values, labels, level, n_resamples, seed
+        )
+
     def summary(self) -> str:
         lo, hi = self.yield_confidence_interval()
         lines = [
@@ -144,13 +200,35 @@ class BacktestResult:
             f"  ({self.bankroll_growth:+.2%})",
             f"max drawdown      {self.max_drawdown:.2%}",
             f"losing streak     {self.longest_losing_streak}",
-            f"t-statistic       {self.t_statistic:+.2f}",
+            f"t-statistic       {self.t_statistic:+.2f}  (naive, assumes independence)",
             f"brier / logloss   {self.brier:.4f} / {self.log_loss:.4f}",
             f"calibration err   {self.ece:.4f}",
         ]
+
+        sig = self.significance()
+        if sig.n_clusters < self.n_bets:
+            clo, chi = sig.confidence_interval
+            lines.extend(
+                [
+                    f"clusters          {sig.n_clusters:,}"
+                    f" (effective n {sig.effective_sample_size:,.0f})",
+                    f"clustered t       {sig.t_statistic:+.2f}"
+                    f"  p={sig.p_value:.4f}",
+                    f"clustered CI      [{clo:+.2%}, {chi:+.2%}]",
+                    f"verdict           "
+                    f"{'significant' if sig.significant else 'NOT distinguishable from zero'}",
+                ]
+            )
+
         if self.mean_clv is not None:
             lines.append(f"mean CLV          {self.mean_clv:+.2%}")
             lines.append(f"CLV beat rate     {self.clv_beat_rate:.2%}")
+            clv_sig = self.clv_significance()
+            if clv_sig is not None:
+                lines.append(
+                    f"CLV t             {clv_sig.t_statistic:+.2f}"
+                    f"  p={clv_sig.p_value:.4f}"
+                )
         if self.went_broke:
             lines.append("BANKRUPT          bankroll hit zero before the sample ended")
         return "\n".join(lines)
@@ -220,6 +298,8 @@ def run_backtest(
     skipped = 0
     returns: list[float] = []
     clvs: list[float] = []
+    clv_labels: list[Hashable] = []
+    labels: list[Hashable] = []
     used_probs: list[float] = []
     used_outcomes: list[int] = []
     losing_streak = 0
@@ -242,6 +322,7 @@ def run_backtest(
         staked_total += stake
         profit_total += payout
         returns.append(payout / stake)
+        labels.append(bet.cluster_key)
         used_probs.append(bet.probability)
         used_outcomes.append(bet.outcome)
         curve.append(bankroll)
@@ -257,6 +338,7 @@ def run_backtest(
             clvs.append(
                 float(closing_line_value(bet.decimal_odds, bet.closing_fair_probability))
             )
+            clv_labels.append(bet.cluster_key)
 
         if bankroll <= 0.0:
             went_broke = True
@@ -291,6 +373,9 @@ def run_backtest(
         ece=expected_calibration_error(outcomes, probs),
         went_broke=went_broke,
         skipped=skipped,
+        cluster_labels=tuple(labels),
+        clv_values=np.asarray(clvs, dtype=np.float64) if clvs else None,
+        clv_cluster_labels=tuple(clv_labels),
     )
 
 

@@ -32,6 +32,18 @@ from .edge import (
     shrink_toward_market,
     simultaneous_kelly,
 )
+from .significance import (
+    SignificanceResult,
+    cluster_bootstrap_ci,
+    clustered_significance,
+    deflate_t_statistic,
+    design_effect,
+    detectable_edge,
+    effective_sample_size,
+    intracluster_correlation,
+    multiple_testing_threshold,
+    required_sample_size,
+)
 from .odds import (
     american_to_decimal,
     american_to_implied,
@@ -87,4 +99,14 @@ __all__ = [
     "percent_bankroll",
     "kelly_stake",
     "walk_forward_calibrate",
+    "SignificanceResult",
+    "clustered_significance",
+    "cluster_bootstrap_ci",
+    "intracluster_correlation",
+    "design_effect",
+    "effective_sample_size",
+    "required_sample_size",
+    "detectable_edge",
+    "multiple_testing_threshold",
+    "deflate_t_statistic",
 ]
