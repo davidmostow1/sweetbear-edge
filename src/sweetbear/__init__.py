@@ -32,6 +32,17 @@ from .edge import (
     shrink_toward_market,
     simultaneous_kelly,
 )
+from .batters import (
+    CATEGORIES,
+    LEAGUE_PA_OUTCOME_RATES,
+    STAT_VALUE_MAPS,
+    BatterOutcomeDistribution,
+    BatterProfile,
+    PitcherAllowedProfile,
+    build_batter_distribution,
+    matchup_batter_rates,
+    plate_appearances_pmf,
+)
 from .strikeouts import (
     LineQuote,
     OpponentProfile,
@@ -127,4 +138,13 @@ __all__ = [
     "batters_faced_pmf",
     "build_strikeout_distribution",
     "standard_ladder",
+    "CATEGORIES",
+    "LEAGUE_PA_OUTCOME_RATES",
+    "STAT_VALUE_MAPS",
+    "BatterOutcomeDistribution",
+    "BatterProfile",
+    "PitcherAllowedProfile",
+    "build_batter_distribution",
+    "matchup_batter_rates",
+    "plate_appearances_pmf",
 ]
