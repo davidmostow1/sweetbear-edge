@@ -1,8 +1,17 @@
 # Probability Machine — Assessment
 
-**Date:** 2026-07-30
+**Date:** 2026-07-30 (superseded 2026-07-31)
 **Repo assessed:** `davidmostow1/sweetbear-edge`
 **Branch:** `claude/probability-machine-assessment-wu47yg`
+
+> **Status note, 2026-07-31.** This document records the state of the project
+> *before* any code existed, and is kept as a record rather than a description
+> of the repository today. Two of its central facts are now out of date: the
+> repository is no longer empty, and the test count has grown from 97 to 160
+> with the addition of the `significance` and `strikeouts` modules. Most
+> importantly, the inference approach praised in section 2 was later found to be
+> wrong on correlated and skewed markets, and was replaced. See `VERIFICATION.md`
+> for the current claims and the commit `7ecae5e` for the correction.
 
 ---
 

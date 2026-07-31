@@ -24,6 +24,8 @@ python examples/end_to_end.py
 | `calibration` | Brier, log loss, ECE/MCE, reliability curves, Murphy decomposition, Platt and isotonic recalibration. |
 | `edge` | Expected value, break-even prices, Kelly and fractional Kelly, joint Kelly across mutually exclusive outcomes, closing line value. |
 | `backtest` | Chronological bankroll simulation with drawdown, bootstrap confidence intervals, and walk-forward recalibration. |
+| `significance` | Correlation-aware inference: cluster-robust errors, wild cluster bootstrap, effective sample size, required sample size, multiple-testing correction. |
+| `strikeouts` | Pitcher strikeout distribution and every main and alternate line priced from it. |
 
 ## The three claims it is built to defend against
 
@@ -37,12 +39,26 @@ which one is carrying the result.
 has a countermeasure here. Lookahead is prevented by `walk_forward_calibrate`,
 which fits a recalibrator only on bets that had already settled — a calibration
 curve can never be informed by its own future. Turnover laundering is prevented
-by reporting yield and bankroll growth separately. Variance mistaken for skill
-is addressed by attaching a t-statistic and a bootstrap interval to every
-result; if the interval straddles zero, there is no finding.
+by reporting yield and bankroll growth separately. Variance mistaken for skill is
+addressed by `significance`, and the detail there matters more than it sounds:
+a plain t-statistic assumes bets are independent, and betting almost never is.
+Measured on simulated data with a **true zero edge**, the naive statistic
+reports significance **54.5% of the time** against a nominal 5%, and its 95%
+interval covers the truth only 42.5% of the time. `clustered_significance`
+lands at 5.8% and 94.8%. Use it, not `BacktestResult.t_statistic`, which is
+retained only so the gap between the two can be measured.
+
+**"It hit on 8 of my last 10 alternate strikeout lines."** Every rung of a
+ladder is a view of one random variable, so five lines on one start is one
+observation, not five. `strikeouts` gives every quote from an outing the same
+`correlation_group`, and `significance` counts it accordingly. Skipping this is
+not a rounding error: on longshot ladders, uncorrected inference called dead
+strategies profitable in 35-41% of simulated null samples.
 
 **"I'm up 12 units this month."** Results take thousands of bets to separate
-skill from luck. Closing line value converges in hundreds, because the closing
+skill from luck. `required_sample_size` puts a number on it — roughly 8,700
+bets to detect a 3% edge at even money — and `detectable_edge` runs it backward
+to tell you what your actual sample can and cannot see. Closing line value converges in hundreds, because the closing
 line is the market's best estimate and consistently beating it is what an edge
 *is*. `run_backtest` reports mean CLV and beat rate whenever closing prices are
 supplied, and `examples/end_to_end.py` demonstrates that CLV calls the outcome
