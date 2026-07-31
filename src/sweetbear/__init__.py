@@ -32,6 +32,16 @@ from .edge import (
     shrink_toward_market,
     simultaneous_kelly,
 )
+from .strikeouts import (
+    LineQuote,
+    OpponentProfile,
+    PitcherProfile,
+    StrikeoutDistribution,
+    batters_faced_pmf,
+    build_strikeout_distribution,
+    matchup_strikeout_rate,
+    standard_ladder,
+)
 from .significance import (
     SignificanceResult,
     cluster_bootstrap_ci,
@@ -109,4 +119,12 @@ __all__ = [
     "detectable_edge",
     "multiple_testing_threshold",
     "deflate_t_statistic",
+    "PitcherProfile",
+    "OpponentProfile",
+    "StrikeoutDistribution",
+    "LineQuote",
+    "matchup_strikeout_rate",
+    "batters_faced_pmf",
+    "build_strikeout_distribution",
+    "standard_ladder",
 ]
