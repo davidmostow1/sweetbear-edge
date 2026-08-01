@@ -43,6 +43,18 @@ from .batters import (
     matchup_batter_rates,
     plate_appearances_pmf,
 )
+from .portfolio import (
+    ScenarioSet,
+    batter_scenarios,
+    combine_independent,
+    count_ladder_scenarios,
+    effective_position_count,
+    expected_log_growth,
+    independent_kelly,
+    joint_kelly,
+    payoff_correlation,
+    return_quantile,
+)
 from .strikeouts import (
     LineQuote,
     OpponentProfile,
@@ -147,4 +159,14 @@ __all__ = [
     "build_batter_distribution",
     "matchup_batter_rates",
     "plate_appearances_pmf",
+    "ScenarioSet",
+    "joint_kelly",
+    "independent_kelly",
+    "expected_log_growth",
+    "return_quantile",
+    "payoff_correlation",
+    "effective_position_count",
+    "count_ladder_scenarios",
+    "batter_scenarios",
+    "combine_independent",
 ]

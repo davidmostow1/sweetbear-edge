@@ -27,6 +27,7 @@ python examples/end_to_end.py
 | `significance` | Correlation-aware inference: cluster-robust errors, wild cluster bootstrap, effective sample size, required sample size, multiple-testing correction. |
 | `strikeouts` | Pitcher strikeout distribution and every main and alternate line priced from it. |
 | `batters` | Batter plate-appearance distribution; hits, total bases, home runs, walks, strikeouts, and singles/doubles/triples all priced from it. Deliberately excludes runs and RBIs, which need game-state coupling this module does not model. |
+| `portfolio` | Staking a set of positions that share fate. Joint Kelly over an explicit scenario distribution, plus the effective position count of a correlated group. |
 
 ## The three claims it is built to defend against
 
@@ -86,6 +87,24 @@ all-or-nothing risk *under*stakes. `simultaneous_kelly` solves the joint
 problem. (The familiar warning that Kelly overstakes applies to simultaneous
 bets on *different* events, where risks add instead of offsetting.)
 
+**Per-bet Kelly is wrong for correlated positions too, in the opposite
+direction.** Positions that lose together — a ladder, a same-game group — are
+one risk wearing several tickets, and staking them rung by rung *over*stakes by
+roughly the number of rungs. This is not a marginal effect. On a five-rung
+ladder where **every rung carries a genuine 6% edge**, per-rung full Kelly
+stakes 1.007 of bankroll and goes bust in **200 of 200** simulated runs, while
+the joint solution compounds to a median 965× over the same 400 outings. The
+edge was real in both cases; only the staking differed. `portfolio.joint_kelly`
+works from an explicit joint scenario distribution rather than from marginals,
+so correlation is carried exactly instead of estimated. Reproduce with
+`validation/correlated_staking_audit.py`.
+
+The joint solution's answer on that ladder is worth stating plainly, because it
+is not what ladder bettors do: it backs **one** rung and declines the other
+four. Rungs correlated near 1 are substitutes, not a portfolio — the extra ones
+add variance without adding edge. `effective_position_count` puts a number on
+it, and it is the count you should report rather than the ticket count.
+
 **Nobody sane bets full Kelly.** Estimation error enters the growth rate
 quadratically, so overbetting is punished far harder than underbetting — growth
 is nearly flat below the optimum and falls off a cliff above it, crossing zero
@@ -101,8 +120,19 @@ model and slightly *degrades* an already-calibrated one.
 
 ## What is not here yet
 
-No data ingestion, no sport or market models, no feature engineering, no live
-odds feeds, no execution or bankroll persistence, no correlation handling for
-same-game or same-slate positions (the reported t-statistic assumes independent
-bets and is an optimistic bound when they are not). Those are the next layers.
-This one has to be right first.
+No data ingestion, no feature engineering, no live odds feeds, no execution or
+bankroll persistence, no market models outside baseball props.
+
+Correlation is now handled in both places it matters — `significance` for
+inference, `portfolio` for staking — but with one gap that is worth naming
+precisely rather than leaving implied. `portfolio.combine_independent` assumes
+independence *across* games, which is defensible for unrelated games and wrong
+for anything sharing a weather system, an umpire, or a postponement risk. And
+it cannot couple a pitcher's strikeout total to the opposing batters'
+strikeout totals in the same game, even though those count the same events
+twice: `strikeouts` and `batters` do not share a plate-appearance-level game
+state, so the coupling is not available to be extracted. Betting both sides of
+that pair will understate the true correlation.
+
+Everything here remains simulation-validated, not market-validated. No claim in
+this repository has been tested against real closing lines or real settlement.
