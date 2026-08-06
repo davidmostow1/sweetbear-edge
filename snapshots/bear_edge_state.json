@@ -1,0 +1,142 @@
+{
+  "captured_at": "2026-08-04T05:02:23.409243+00:00",
+  "head": "5f284eb8cf66050f06601087ef04a267441f1958",
+  "branch_shas": {
+    "archive/canonical-betting-state-2026-07-31": "c02672c6c54b1823f8164967b60dd43b76d439b9",
+    "codex/bear-edge-platform-v2-design": "6ce0f6e26b1292842b95b13394257bb1ea92be2c",
+    "codex/bear-edge-release-candidate": "2ca03a24fc1af20a3c03086757cd1dfb85c43d1e",
+    "codex/mlb-unified-prediction-machine-v1": "7770f698ce6f56b793b104f70e724b6592c06a14",
+    "codex/pitcher-strikeout-complete-data-research": "5f284eb8cf66050f06601087ef04a267441f1958",
+    "codex/product-hardening-ci": "32bddbf687b15c86a10174c2afff4dbd7f0540a9",
+    "codex/reconcile-pr17-master": "5f284eb8cf66050f06601087ef04a267441f1958",
+    "codex/sweet-bear-batter-history-machine-v1": "448394b93d0cbc9d8c7accc83f2b081a997329a7",
+    "codex/sweet-bear-pitcher-strikeout-machine-v1": "a5b422bf0f98a10593bb5c52377d78ff28e456f0",
+    "codex/sweet-bear-unified-mlb-machine-v1": "b6ddc74e926af4b2c728d816a70299192d895ae7",
+    "codex/sweet-bear-unified-mlb-machine-v2": "c5fca1f2c99ab17f01490392804b926eb3624317",
+    "feat/mlb-simulator-v1": "f53f4907644f042a42d806cf8b0737cce56118be",
+    "feat/mlb-simulator-v1-rc": "c0f0c3c4e81809ec131193e7b6a3126755b0de93",
+    "fix/aikido-security-sast-74044061-wgsf": "ca99ae99b688bbe98e919fa5695092ac808e3712",
+    "fix/aikido-security-sast-74044148-fkwe": "ac439f4777054fdcc2564a6424e8342482fee733",
+    "fix/allow-lean-verdict": "0fe883b344559c8c631237868c7ff20597adf299",
+    "master": "738b3e462dd1e46264240006f72a843a04cc17cf"
+  },
+  "test_count": {
+    "ran": true,
+    "exit_code": 0,
+    "tests": 750,
+    "pass": 750,
+    "fail": 0
+  },
+  "evaluation_verdicts": [
+    "PASS",
+    "WAIT",
+    "BET"
+  ],
+  "lean_wired_into_app": false,
+  "lean_verdict_refs_in_src": 0,
+  "uncertainty_method": "event_cluster_percentile_bootstrap",
+  "cluster_bootstrap_present": true,
+  "promotion_policy": {
+    "minimumSettledPredictions": 500,
+    "minimumDistinctEvents": 100,
+    "minimumBucketObservations": 100,
+    "minimumSettlementCoverage": 0.95,
+    "maximumExpectedCalibrationError": 0.03,
+    "minimumCalibrationSlope": 0.8,
+    "maximumCalibrationSlope": 1.2,
+    "maximumAbsoluteCalibrationIntercept": 0.05,
+    "requireNoMaterialBaselineDegradation": true,
+    "requireNonNegativeClosingLineValueInterval": true,
+    "reliabilityBucketBoundaries": [
+      0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1
+    ],
+    "requiredBaseline": {
+      "baselineId": "no_vig_market",
+      "method": "two_way_proportional_normalization",
+      "methodVersion": "1.0.0"
+    },
+    "requiredSplitMethod": "event_atomic_prediction_interval_blocks",
+    "requiredUncertaintyMethod": "event_cluster_percentile_bootstrap",
+    "minimumBootstrapResamples": 2000,
+    "minimumConfidenceLevel": 0.95
+  },
+  "model_evidence": [
+    {
+      "modelId": "poisson_count_v1",
+      "marketFamily": "pitcher_strikeouts",
+      "modelStatus": "research_only",
+      "trainingCutoff": null,
+      "calibrationReportId": null,
+      "implementationDigest": null,
+      "featureCount": 6
+    },
+    {
+      "modelId": "negative_binomial_pitcher_strikeouts_v1",
+      "marketFamily": "pitcher_strikeouts",
+      "modelStatus": "research_only",
+      "trainingCutoff": null,
+      "calibrationReportId": null,
+      "implementationDigest": "ce6a0aa05d26a356e0d55887decb9e8dfa25332d2a627b38379972eecdb51299",
+      "featureCount": 11
+    },
+    {
+      "modelId": "poisson_count_v1",
+      "marketFamily": "batter_hits",
+      "modelStatus": "research_only",
+      "trainingCutoff": null,
+      "calibrationReportId": null,
+      "implementationDigest": null,
+      "featureCount": 6
+    },
+    {
+      "modelId": "poisson_count_v1",
+      "marketFamily": "batter_runs_scored",
+      "modelStatus": "research_only",
+      "trainingCutoff": null,
+      "calibrationReportId": null,
+      "implementationDigest": null,
+      "featureCount": 6
+    },
+    {
+      "modelId": "poisson_count_v1",
+      "marketFamily": "batter_total_bases",
+      "modelStatus": "research_only",
+      "trainingCutoff": null,
+      "calibrationReportId": null,
+      "implementationDigest": null,
+      "featureCount": 6
+    }
+  ],
+  "batter_features": {
+    "batter_hits": [
+      "line",
+      "recent_per_game",
+      "recent_sample_limit",
+      "recent_weight",
+      "season_per_game",
+      "side"
+    ],
+    "batter_runs_scored": [
+      "line",
+      "recent_per_game",
+      "recent_sample_limit",
+      "recent_weight",
+      "season_per_game",
+      "side"
+    ],
+    "batter_total_bases": [
+      "line",
+      "recent_per_game",
+      "recent_sample_limit",
+      "recent_weight",
+      "season_per_game",
+      "side"
+    ]
+  },
+  "bet_placement_files": 0
+}

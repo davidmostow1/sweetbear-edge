@@ -26,6 +26,7 @@ python examples/end_to_end.py
 | `backtest` | Chronological bankroll simulation with drawdown, bootstrap confidence intervals, and walk-forward recalibration. |
 | `significance` | Correlation-aware inference: cluster-robust errors, wild cluster bootstrap, effective sample size, required sample size, multiple-testing correction. |
 | `strikeouts` | Pitcher strikeout distribution and every main and alternate line priced from it. |
+| `batters` | Batter plate-appearance distribution; hits, total bases, home runs, walks, strikeouts, and singles/doubles/triples all priced from it. Deliberately excludes runs and RBIs, which need game-state coupling this module does not model. |
 
 ## The three claims it is built to defend against
 
