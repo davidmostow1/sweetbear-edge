@@ -13,3 +13,4 @@ data/cache/
 *.parquet
 *.sqlite
 data/mlb/
+data/mlb_facts.db
